@@ -1,1 +1,71 @@
-<!-- Updated index.html content -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>parlay.fun - Home</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white">
+
+<nav class="flex justify-between items-center p-4 bg-gray-800">
+  <div class="text-xl font-bold cursor-pointer" onclick="goHome()">parlay.fun</div>
+  <div class="space-x-6">
+    <a href="/markets.html">Markets</a>
+    <a href="/my-parlays.html">My Parlays</a>
+    <a href="/create-parlay.html">Create Parlay</a>
+    <button id="connect-wallet" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Connect Wallet</button>
+  </div>
+</nav>
+
+<div class="flex flex-col justify-center items-center min-h-screen text-center">
+  <h1 class="text-4xl font-bold mb-4">Welcome to parlay.fun</h1>
+  <p class="mb-6 text-gray-400">Create powerful crypto parlays and win big!</p>
+  <a href="/create-parlay.html" class="bg-green-500 hover:bg-green-400 text-black font-semibold px-6 py-3 rounded mb-8">Create a Parlay</a>
+
+  <div id="live-prices" class="flex space-x-6 text-sm text-gray-300">
+    <div id="btc-price">BTC: --</div>
+    <div id="eth-price">ETH: --</div>
+    <div id="sol-price">SOL: --</div>
+  </div>
+</div>
+
+<script>
+function goHome() {
+  window.location.href = '/index.html';
+}
+
+async function connectWallet() {
+  if (window.solana && window.solana.isPhantom) {
+    try {
+      const response = await window.solana.connect();
+      const publicKey = response.publicKey.toString();
+      document.getElementById('connect-wallet').innerText = publicKey.slice(0, 4) + '...' + publicKey.slice(-4);
+    } catch (err) {
+      console.error('Wallet connection failed:', err);
+    }
+  } else {
+    alert('Phantom Wallet not found. Please install it.');
+  }
+}
+
+document.getElementById('connect-wallet').addEventListener('click', connectWallet);
+
+async function fetchPrices() {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
+    const data = await res.json();
+    document.getElementById('btc-price').innerText = `BTC: $${data.bitcoin.usd}`;
+    document.getElementById('eth-price').innerText = `ETH: $${data.ethereum.usd}`;
+    document.getElementById('sol-price').innerText = `SOL: $${data.solana.usd}`;
+  } catch (error) {
+    console.error('Error fetching prices:', error);
+  }
+}
+
+fetchPrices();
+setInterval(fetchPrices, 5000);
+</script>
+
+</body>
+</html>
