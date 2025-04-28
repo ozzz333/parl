@@ -1,1 +1,232 @@
-<!-- Updated create-parlay.html content -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>parlay.fun - Create Parlay</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    .toast {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      background: #4ade80;
+      color: black;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      font-weight: bold;
+      animation: fadeInOut 3s forwards;
+      z-index: 50;
+    }
+    @keyframes fadeInOut {
+      0% { opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-white">
+
+<nav class="flex justify-between items-center p-4 bg-gray-800">
+  <div class="text-xl font-bold cursor-pointer" onclick="goHome()">parlay.fun</div>
+  <div class="space-x-6">
+    <a href="/markets.html">Markets</a>
+    <a href="/my-parlays.html">My Parlays</a>
+    <a href="/create-parlay.html" class="underline">Create Parlay</a>
+    <button id="connect-wallet" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Connect Wallet</button>
+  </div>
+</nav>
+
+<div class="flex justify-center items-start min-h-screen p-6">
+  <div class="w-full max-w-xl">
+    <h2 class="text-2xl mb-6 text-center">Create New Parlay</h2>
+
+    <div class="mb-4">
+      <label for="market" class="block mb-1 text-sm">Select Market:</label>
+      <select id="market" class="w-full p-2 bg-gray-700 rounded">
+        <option value="BTC/USD">BTC/USD</option>
+        <option value="ETH/USD">ETH/USD</option>
+        <option value="SOL/USD">SOL/USD</option>
+      </select>
+      <div id="market-info" class="mt-1 text-sm text-gray-400"></div>
+    </div>
+
+    <div class="mb-4">
+      <label for="target" class="block mb-1 text-sm">Target Price:</label>
+      <input id="target" type="number" class="w-full p-2 bg-gray-700 rounded" placeholder="Enter target price">
+    </div>
+
+    <div class="flex space-x-4 mb-6">
+      <button onclick="addBet()" class="bg-green-600 px-4 py-2 rounded hover:bg-green-500">Add Bet</button>
+      <button onclick="clearBets()" class="bg-red-600 px-4 py-2 rounded hover:bg-red-500">Clear Bets</button>
+    </div>
+
+    <div id="bet-list" class="mb-6"></div>
+
+    <div>
+      <label for="wager" class="block mb-1 text-sm">Wager Amount (SOL):</label>
+      <input id="wager" type="number" class="w-full p-2 bg-gray-700 rounded" placeholder="Enter wager" oninput="updatePNL()">
+    </div>
+
+    <div id="pnl" class="mt-2 text-sm text-green-400 mb-6">Potential Winnings: 0 SOL</div>
+
+    <div class="flex justify-center">
+      <button onclick="createParlay()" class="bg-blue-500 hover:bg-blue-400 px-6 py-3 rounded text-lg font-semibold">Create Parlay</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentBets = [];
+let livePrices = {};
+
+async function fetchLivePrices() {
+  try {
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true');
+    const data = await response.json();
+    livePrices['BTC/USD'] = { price: data.bitcoin.usd, change: data.bitcoin.usd_24h_change.toFixed(2) };
+    livePrices['ETH/USD'] = { price: data.ethereum.usd, change: data.ethereum.usd_24h_change.toFixed(2) };
+    livePrices['SOL/USD'] = { price: data.solana.usd, change: data.solana.usd_24h_change.toFixed(2) };
+    updateMarketInfo();
+    refreshBetList();
+  } catch (error) {
+    console.error('Error fetching live prices:', error);
+  }
+}
+
+async function connectWallet() {
+  if (window.solana && window.solana.isPhantom) {
+    try {
+      const response = await window.solana.connect();
+      const publicKey = response.publicKey.toString();
+      document.getElementById('connect-wallet').innerText = publicKey.slice(0, 4) + '...' + publicKey.slice(-4);
+      showToast('Wallet Connected ✅', true);
+    } catch (err) {
+      console.error('Connection failed', err);
+      showToast('Wallet connection failed ❌', false);
+    }
+  } else {
+    alert('Phantom Wallet not found! Please install it.');
+  }
+}
+
+document.getElementById('connect-wallet').addEventListener('click', connectWallet);
+
+function addBet() {
+  const market = document.getElementById('market').value;
+  const target = document.getElementById('target').value;
+  if (!market || !target) {
+    alert('Please fill in both market and target price!');
+    return;
+  }
+  currentBets.push({ market, target });
+  refreshBetList();
+  document.getElementById('target').value = '';
+  updatePNL();
+}
+
+function removeBet(index) {
+  currentBets.splice(index, 1);
+  refreshBetList();
+  updatePNL();
+}
+
+function refreshBetList() {
+  const betList = document.getElementById('bet-list');
+  betList.innerHTML = '';
+  if (currentBets.length === 0) {
+    betList.innerHTML = '<div class="text-gray-400 text-center py-4">No bets added yet.</div>';
+    return;
+  }
+  currentBets.forEach((bet, idx) => {
+    const priceData = livePrices[bet.market] || { price: 0, change: 0 };
+    const item = document.createElement('div');
+    item.className = 'bg-gray-800 p-3 rounded-lg mb-2 flex justify-between items-center shadow-md';
+    item.innerHTML = `<div><div class="font-semibold">${bet.market}</div><div class="text-sm text-gray-400">Target: $${bet.target}</div><div class="text-xs text-gray-500">Live: $${priceData.price} (${priceData.change}%)</div></div><button onclick="removeBet(${idx})" class="text-red-400 hover:text-red-300">Remove</button>`;
+    betList.appendChild(item);
+  });
+}
+
+function clearBets() {
+  currentBets = [];
+  refreshBetList();
+  updatePNL();
+}
+
+function updateMarketInfo() {
+  const market = document.getElementById('market').value;
+  const priceInfo = livePrices[market];
+  const infoElement = document.getElementById('market-info');
+  if (priceInfo) {
+    infoElement.innerHTML = `<span class="text-sm text-gray-400">Live: $${priceInfo.price} (${priceInfo.change}%)</span>`;
+  } else {
+    infoElement.innerText = '';
+  }
+}
+
+function updatePNL() {
+  const wager = parseFloat(document.getElementById('wager').value) || 0;
+  const odds = Math.pow(2, currentBets.length);
+  const potential = wager * odds;
+  document.getElementById('pnl').innerText = `Potential Winnings: ${potential.toFixed(2)} SOL`;
+}
+
+async function saveParlayToServer(parlay) {
+  try {
+    const response = await fetch('https://api.jsonbin.io/v3/b/680fed398561e97a50099c57', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': '$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS'
+      },
+      body: JSON.stringify(parlay)
+    });
+    const data = await response.json();
+    console.log('Parlay saved:', data);
+  } catch (error) {
+    console.error('Failed to save parlay:', error);
+  }
+}
+
+function createParlay() {
+  if (currentBets.length === 0) {
+    showToast('You must add at least one bet!', false);
+    return;
+  }
+  const wager = parseFloat(document.getElementById('wager').value);
+  if (!wager || wager <= 0) {
+    showToast('Enter a valid wager amount!', false);
+    return;
+  }
+  const newParlay = {
+    bets: currentBets,
+    wager: wager,
+    potentialWinnings: wager * Math.pow(2, currentBets.length)
+  };
+  saveParlayToServer(newParlay);
+  showToast('Parlay successfully created! ✅', true);
+  clearBets();
+  document.getElementById('wager').value = '';
+  updatePNL();
+}
+
+function showToast(message, success) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.style.background = success ? '#4ade80' : '#f87171';
+  toast.innerText = message;
+  document.body.appendChild(toast);
+  setTimeout(() => { toast.remove(); }, 3000);
+}
+
+fetchLivePrices();
+setInterval(fetchLivePrices, 5000);
+
+function goHome() {
+  window.location.href = '/index.html';
+}
+</script>
+
+</body>
+</html>
