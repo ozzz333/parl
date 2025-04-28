@@ -1,1 +1,100 @@
-<!-- Updated my-parlays.html content -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>parlay.fun - My Parlays</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white">
+
+<nav class="flex justify-between items-center p-4 bg-gray-800">
+  <div class="text-xl font-bold cursor-pointer" onclick="goHome()">parlay.fun</div>
+  <div class="space-x-6">
+    <a href="/markets.html">Markets</a>
+    <a href="/my-parlays.html" class="underline">My Parlays</a>
+    <a href="/create-parlay.html">Create Parlay</a>
+    <button id="connect-wallet" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Connect Wallet</button>
+  </div>
+</nav>
+
+<div class="p-6">
+  <h2 class="text-2xl mb-6 text-center">My Parlays</h2>
+
+  <div id="parlays" class="grid gap-6 md:grid-cols-2">
+    <!-- Parlays will load here -->
+  </div>
+</div>
+
+<script>
+async function loadParlays() {
+  try {
+    const response = await fetch('https://api.jsonbin.io/v3/b/680fed398561e97a50099c57/latest', {
+      headers: {
+        'X-Master-Key': '$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS'
+      }
+    });
+    const data = await response.json();
+    displayParlays(data.record);
+  } catch (err) {
+    console.error('Failed to load parlays:', err);
+    document.getElementById('parlays').innerHTML = '<div class="text-center text-gray-400">Failed to load parlays.</div>';
+  }
+}
+
+function displayParlays(parlays) {
+  const container = document.getElementById('parlays');
+  container.innerHTML = '';
+
+  if (!parlays || parlays.length === 0) {
+    container.innerHTML = '<div class="text-center text-gray-400">No parlays created yet.</div>';
+    return;
+  }
+
+  parlays.forEach((parlay, idx) => {
+    const card = document.createElement('div');
+    card.className = 'bg-gray-800 p-4 rounded-lg shadow-md';
+
+    const betsList = parlay.bets.map(bet => `<li>${bet.market} → $${bet.target}</li>`).join('');
+
+    card.innerHTML = `
+      <h3 class="text-lg font-bold mb-2">Parlay #${idx + 1}</h3>
+      <div class="text-sm mb-2">Wager: <span class="text-green-400">${parlay.wager} SOL</span></div>
+      <div class="text-sm mb-2">Potential Winnings: <span class="text-green-400">${parlay.potentialWinnings} SOL</span></div>
+      <div class="text-sm mb-2">Bets:
+        <ul class="list-disc list-inside">${betsList}</ul>
+      </div>
+      <div class="mt-2">
+        <span class="bg-yellow-400 text-black px-2 py-1 rounded text-xs">Pending</span>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+function goHome() {
+  window.location.href = '/index.html';
+}
+
+async function connectWallet() {
+  if (window.solana && window.solana.isPhantom) {
+    try {
+      const response = await window.solana.connect();
+      const publicKey = response.publicKey.toString();
+      document.getElementById('connect-wallet').innerText = publicKey.slice(0, 4) + '...' + publicKey.slice(-4);
+    } catch (err) {
+      console.error('Wallet connection failed:', err);
+    }
+  } else {
+    alert('Phantom Wallet not found. Please install it.');
+  }
+}
+
+document.getElementById('connect-wallet').addEventListener('click', connectWallet);
+
+loadParlays();
+</script>
+
+</body>
+</html>
