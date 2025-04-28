@@ -1,1 +1,89 @@
-<!-- Updated markets.html content -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>parlay.fun - Markets</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white">
+
+<nav class="flex justify-between items-center p-4 bg-gray-800">
+  <div class="text-xl font-bold cursor-pointer" onclick="goHome()">parlay.fun</div>
+  <div class="space-x-6">
+    <a href="/markets.html" class="underline">Markets</a>
+    <a href="/my-parlays.html">My Parlays</a>
+    <a href="/create-parlay.html">Create Parlay</a>
+    <button id="connect-wallet" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Connect Wallet</button>
+  </div>
+</nav>
+
+<div class="p-6">
+  <h2 class="text-2xl mb-6 text-center">Crypto Markets</h2>
+
+  <div id="market-list" class="grid gap-6 md:grid-cols-3">
+    <!-- Crypto cards will be inserted here -->
+  </div>
+</div>
+
+<script>
+async function fetchMarketPrices() {
+  try {
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true');
+    const data = await res.json();
+    renderMarkets(data);
+  } catch (err) {
+    console.error('Error fetching prices:', err);
+  }
+}
+
+function renderMarkets(data) {
+  const marketList = document.getElementById('market-list');
+  marketList.innerHTML = '';
+
+  const markets = [
+    { name: 'Bitcoin (BTC)', id: 'bitcoin', symbol: 'BTC' },
+    { name: 'Ethereum (ETH)', id: 'ethereum', symbol: 'ETH' },
+    { name: 'Solana (SOL)', id: 'solana', symbol: 'SOL' }
+  ];
+
+  markets.forEach(market => {
+    const coin = data[market.id];
+    const card = document.createElement('div');
+    card.className = 'bg-gray-800 p-4 rounded-lg shadow-md flex flex-col items-center';
+    card.innerHTML = `
+      <h3 class="text-lg font-bold mb-2">${market.name}</h3>
+      <p class="mb-2">Price: <span class="text-green-400">$${coin.usd}</span></p>
+      <p class="mb-4 text-sm text-gray-400">24h: ${coin.usd_24h_change.toFixed(2)}%</p>
+      <a href="/create-parlay.html" class="bg-blue-500 hover:bg-blue-400 text-white px-4 py-2 rounded">Create Bet</a>
+    `;
+    marketList.appendChild(card);
+  });
+}
+
+function goHome() {
+  window.location.href = '/index.html';
+}
+
+async function connectWallet() {
+  if (window.solana && window.solana.isPhantom) {
+    try {
+      const response = await window.solana.connect();
+      const publicKey = response.publicKey.toString();
+      document.getElementById('connect-wallet').innerText = publicKey.slice(0, 4) + '...' + publicKey.slice(-4);
+    } catch (err) {
+      console.error('Wallet connection failed:', err);
+    }
+  } else {
+    alert('Phantom Wallet not found. Please install it.');
+  }
+}
+
+document.getElementById('connect-wallet').addEventListener('click', connectWallet);
+
+fetchMarketPrices();
+setInterval(fetchMarketPrices, 5000);
+</script>
+
+</body>
+</html>
