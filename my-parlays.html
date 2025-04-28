@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>parlay.fun - My Parlays</title>
+  <title>parlay.fun - Create Parlay</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
 <body class="bg-gray-900 text-white">
@@ -12,69 +12,178 @@
   <div class="text-xl font-bold cursor-pointer" onclick="goHome()">parlay.fun</div>
   <div class="space-x-6">
     <a href="/markets.html">Markets</a>
-    <a href="/my-parlays.html" class="underline">My Parlays</a>
-    <a href="/create-parlay.html">Create Parlay</a>
+    <a href="/my-parlays.html">My Parlays</a>
+    <a href="/create-parlay.html" class="underline">Create Parlay</a>
     <button id="connect-wallet" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Connect Wallet</button>
   </div>
 </nav>
 
-<div class="p-6">
-  <h2 class="text-2xl mb-6 text-center">My Parlays</h2>
+<div class="flex justify-center items-start min-h-screen p-6">
+  <div class="w-full max-w-xl">
 
-  <div id="parlays" class="grid gap-6 md:grid-cols-2">
-    <!-- Parlays will load here -->
+    <h2 class="text-2xl mb-6 text-center">Create New Parlay</h2>
+
+    <div class="mb-4">
+      <label for="market" class="block mb-1 text-sm">Select Market:</label>
+      <select id="market" class="w-full p-2 bg-gray-700 rounded" onchange="updateMarketInfo()">
+        <option value="BTC/USD">BTC/USD</option>
+        <option value="ETH/USD">ETH/USD</option>
+        <option value="SOL/USD">SOL/USD</option>
+      </select>
+      <div id="market-info" class="mt-1 text-sm text-gray-400"></div>
+    </div>
+
+    <div class="mb-4">
+      <label for="expiry" class="block mb-1 text-sm">Select Expiry:</label>
+      <select id="expiry" class="w-full p-2 bg-gray-700 rounded" onchange="updateMarginAndFee()">
+        <option value="1">1 Hour</option>
+        <option value="4">4 Hours</option>
+        <option value="24">1 Day</option>
+        <option value="168">7 Days</option>
+        <option value="720">30 Days</option>
+      </select>
+    </div>
+
+    <div class="mb-4">
+      <label for="target" class="block mb-1 text-sm">Target Price:</label>
+      <input id="target" type="number" class="w-full p-2 bg-gray-700 rounded" placeholder="Enter target price">
+    </div>
+
+    <div class="mb-4">
+      <p id="margin-info" class="text-sm text-gray-400"></p>
+    </div>
+
+    <div class="flex space-x-4 mb-6">
+      <button onclick="addBet()" class="bg-green-600 px-4 py-2 rounded hover:bg-green-500">Add Bet</button>
+      <button onclick="clearBets()" class="bg-red-600 px-4 py-2 rounded hover:bg-red-500">Clear Bets</button>
+    </div>
+
+    <div id="bet-list" class="mb-6"></div>
+
+        <div>
+      <label for="wager" class="block mb-1 text-sm">Wager Amount (SOL):</label>
+      <input id="wager" type="number" class="w-full p-2 bg-gray-700 rounded" placeholder="Enter wager" oninput="updatePNL()">
+    </div>
+
+    <div class="mt-4 text-sm text-gray-400">
+      <div id="fee-info" class="mb-2">Platform Fee: 0 SOL</div>
+      <div id="odds-info" class="mb-2">Total Odds: 1.00x</div>
+      <div id="pnl" class="text-green-400">Potential Winnings: 0 SOL</div>
+    </div>
+
+    <div class="flex justify-center mt-6">
+      <button onclick="createParlay()" class="bg-blue-500 hover:bg-blue-400 px-6 py-3 rounded text-lg font-semibold">Create Parlay</button>
+    </div>
+
   </div>
 </div>
 
-<script>
-async function loadParlays() {
+  <script>
+let currentBets = [];
+let livePrices = {};
+let marginOfError = 0.015; // 1.5% default
+let platformFeeRate = 0.001; // 0.1% default
+
+const marketCaps = {
+  'BTC/USD': 1,
+  'ETH/USD': 1.2,
+  'SOL/USD': 1.5
+};
+
+async function fetchLivePrices() {
   try {
-    const response = await fetch('https://api.jsonbin.io/v3/b/680fed398561e97a50099c57/latest', {
-      headers: {
-        'X-Master-Key': '$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS'
-      }
-    });
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true');
     const data = await response.json();
-    displayParlays(data.record);
-  } catch (err) {
-    console.error('Failed to load parlays:', err);
-    document.getElementById('parlays').innerHTML = '<div class="text-center text-gray-400">Failed to load parlays.</div>';
+    livePrices['BTC/USD'] = { price: data.bitcoin.usd, change: data.bitcoin.usd_24h_change.toFixed(2) };
+    livePrices['ETH/USD'] = { price: data.ethereum.usd, change: data.ethereum.usd_24h_change.toFixed(2) };
+    livePrices['SOL/USD'] = { price: data.solana.usd, change: data.solana.usd_24h_change.toFixed(2) };
+    updateMarketInfo();
+    refreshBetList();
+  } catch (error) {
+    console.error('Error fetching live prices:', error);
   }
 }
 
-function displayParlays(parlays) {
-  const container = document.getElementById('parlays');
-  container.innerHTML = '';
+function updateMarketInfo() {
+  const market = document.getElementById('market').value;
+  const priceInfo = livePrices[market];
+  const infoElement = document.getElementById('market-info');
+  if (priceInfo) {
+    infoElement.innerHTML = `<span class="text-sm text-gray-400">Live: $${priceInfo.price} (${priceInfo.change}%)</span>`;
+  } else {
+    infoElement.innerText = '';
+  }
+}
 
-  if (!parlays || parlays.length === 0) {
-    container.innerHTML = '<div class="text-center text-gray-400">No parlays created yet.</div>';
+function updateMarginAndFee() {
+  const expiryHours = parseInt(document.getElementById('expiry').value);
+  marginOfError = 0.015 + (expiryHours / 24) * 0.002; // e.g., 7d => ~2.5%
+  platformFeeRate = 0.001 + (expiryHours / 168) * 0.005; // e.g., 7d => ~0.5%
+  document.getElementById('margin-info').innerText = `Estimated Margin of Error: ±${(marginOfError * 100).toFixed(2)}%`;
+  updatePNL();
+}
+
+function addBet() {
+  const market = document.getElementById('market').value;
+  const target = parseFloat(document.getElementById('target').value);
+  if (!market || !target) {
+    alert('Please fill in market and target!');
     return;
   }
+  const live = livePrices[market]?.price || 0;
+  const distance = Math.abs(target - live) / live;
+  const odds = 1 / (distance + marginOfError); // Simple odds model
 
-  parlays.forEach((parlay, idx) => {
-    const card = document.createElement('div');
-    card.className = 'bg-gray-800 p-4 rounded-lg shadow-md';
+  currentBets.push({ market, target, odds });
+  refreshBetList();
+  document.getElementById('target').value = '';
+  updatePNL();
+}
 
-    const betsList = parlay.bets.map(bet => `<li>${bet.market} → $${bet.target}</li>`).join('');
-
-    card.innerHTML = `
-      <h3 class="text-lg font-bold mb-2">Parlay #${idx + 1}</h3>
-      <div class="text-sm mb-2">Wager: <span class="text-green-400">${parlay.wager} SOL</span></div>
-      <div class="text-sm mb-2">Potential Winnings: <span class="text-green-400">${parlay.potentialWinnings} SOL</span></div>
-      <div class="text-sm mb-2">Bets:
-        <ul class="list-disc list-inside">${betsList}</ul>
+function refreshBetList() {
+  const betList = document.getElementById('bet-list');
+  betList.innerHTML = '';
+  if (currentBets.length === 0) {
+    betList.innerHTML = '<div class="text-gray-400 text-center py-4">No bets added yet.</div>';
+    return;
+  }
+  currentBets.forEach((bet, idx) => {
+    const item = document.createElement('div');
+    item.className = 'bg-gray-800 p-3 rounded-lg mb-2 flex justify-between items-center shadow-md';
+    item.innerHTML = `
+      <div>
+        <div class="font-semibold">${bet.market}</div>
+        <div class="text-sm text-gray-400">Target: $${bet.target}</div>
+        <div class="text-xs text-gray-500">Bet Odds: ${bet.odds.toFixed(2)}x</div>
       </div>
-      <div class="mt-2">
-        <span class="bg-yellow-400 text-black px-2 py-1 rounded text-xs">Pending</span>
-      </div>
+      <button onclick="removeBet(${idx})" class="text-red-400 hover:text-red-300">Remove</button>
     `;
-
-    container.appendChild(card);
+    betList.appendChild(item);
   });
 }
 
-function goHome() {
-  window.location.href = '/index.html';
+function removeBet(index) {
+  currentBets.splice(index, 1);
+  refreshBetList();
+  updatePNL();
+}
+
+function clearBets() {
+  currentBets = [];
+  refreshBetList();
+  updatePNL();
+}
+
+function updatePNL() {
+  const wager = parseFloat(document.getElementById('wager').value) || 0;
+  const combinedOdds = currentBets.reduce((acc, bet) => acc * bet.odds, 1);
+
+  const platformFee = wager * platformFeeRate;
+  const potentialWinnings = (wager * combinedOdds) - platformFee;
+
+  document.getElementById('fee-info').innerText = `Platform Fee: ${platformFee.toFixed(3)} SOL`;
+  document.getElementById('odds-info').innerText = `Total Odds: ${combinedOdds.toFixed(2)}x`;
+  document.getElementById('pnl').innerText = `Potential Winnings: ${potentialWinnings.toFixed(3)} SOL`;
 }
 
 async function connectWallet() {
@@ -84,16 +193,46 @@ async function connectWallet() {
       const publicKey = response.publicKey.toString();
       document.getElementById('connect-wallet').innerText = publicKey.slice(0, 4) + '...' + publicKey.slice(-4);
     } catch (err) {
-      console.error('Wallet connection failed:', err);
+      console.error('Connection failed', err);
     }
   } else {
-    alert('Phantom Wallet not found. Please install it.');
+    alert('Phantom Wallet not found!');
   }
 }
 
 document.getElementById('connect-wallet').addEventListener('click', connectWallet);
 
-loadParlays();
+function createParlay() {
+  if (currentBets.length === 0) {
+    alert('You must add at least one bet!');
+    return;
+  }
+  const wager = parseFloat(document.getElementById('wager').value);
+  if (!wager || wager <= 0) {
+    alert('Please enter a valid wager amount!');
+    return;
+  }
+
+  const parlay = {
+    bets: currentBets,
+    wager,
+    expiry: parseInt(document.getElementById('expiry').value),
+    createdAt: new Date().toISOString()
+  };
+  console.log('Parlay Created:', parlay);
+  alert('Parlay Created Successfully!');
+  clearBets();
+  document.getElementById('wager').value = '';
+  updatePNL();
+}
+
+function goHome() {
+  window.location.href = '/index.html';
+}
+
+fetchLivePrices();
+setInterval(fetchLivePrices, 5000);
+updateMarginAndFee(); // Initialize margin on page load
 </script>
 
 </body>
