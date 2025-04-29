@@ -31,15 +31,21 @@
 
 <script>
 let livePrices = {};
-let parlays = JSON.parse(localStorage.getItem('parlays') || '[]');
+let parlays = [];
 
-function toggleTab(tab) {
-  document.getElementById('tab-open').classList.toggle('bg-blue-600', tab === 'open');
-  document.getElementById('tab-open').classList.toggle('bg-gray-700', tab !== 'open');
-  document.getElementById('tab-closed').classList.toggle('bg-blue-600', tab === 'closed');
-  document.getElementById('tab-closed').classList.toggle('bg-gray-700', tab !== 'closed');
-  document.getElementById('open-positions').classList.toggle('hidden', tab !== 'open');
-  document.getElementById('closed-positions').classList.toggle('hidden', tab !== 'closed');
+async function fetchParlaysFromDatabase() {
+  try {
+    const res = await fetch("https://api.jsonbin.io/v3/b/680fed398561e97a50099c57/latest", {
+      headers: {
+        "X-Master-Key": "$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS"
+      }
+    });
+    const data = await res.json();
+    parlays = data.record || [];
+    fetchLivePrices();
+  } catch (err) {
+    console.error("Fetch failed", err);
+  }
 }
 
 async function fetchLivePrices() {
@@ -55,15 +61,6 @@ async function fetchLivePrices() {
   }
 }
 
-function formatTimeRemaining(expiryTime) {
-  const now = new Date();
-  const remaining = expiryTime - now;
-  if (remaining <= 0) return 'Expired';
-  const hrs = Math.floor(remaining / 3600000);
-  const mins = Math.floor((remaining % 3600000) / 60000);
-  return `${hrs}h ${mins}m`;
-}
-
 function renderPositions() {
   const openDiv = document.getElementById('open-positions');
   const closedDiv = document.getElementById('closed-positions');
@@ -71,23 +68,21 @@ function renderPositions() {
   closedDiv.innerHTML = '';
 
   const now = new Date();
-  parlays.forEach((p, idx) => {
-    const createdAt = new Date(p.createdAt);
-    const expiryTime = new Date(createdAt.getTime() + p.expiry * 60 * 60 * 1000);
+
+  parlays.forEach(p => {
+    const expiryTime = new Date(p.createdAt);
+    expiryTime.setHours(expiryTime.getHours() + p.expiry);
     const isExpired = now > expiryTime;
 
-    const livePrice = livePrices[p.market] || 0;
+    const livePrice = livePrices[p.market];
     const hitTarget = p.direction === 'above' ? livePrice >= p.target : livePrice <= p.target;
     const won = isExpired && hitTarget;
     const status = isExpired ? (won ? 'Won ✅' : 'Lost ❌') : 'Open 🟡';
 
-    const pnl = isExpired
-      ? (won ? (p.wager * p.odds - p.wager).toFixed(2) : (-p.wager).toFixed(2))
-      : '-';
+    const pnl = isExpired ? (won ? (p.wager * p.odds - p.wager).toFixed(2) : (-p.wager).toFixed(2)) : '-';
 
     const card = document.createElement('div');
     card.className = 'bg-gray-800 p-4 rounded shadow-md space-y-2';
-
     card.innerHTML = `
       <div class="flex justify-between">
         <div class="font-bold">${p.market} (${p.direction.toUpperCase()} $${p.target})</div>
@@ -99,16 +94,25 @@ function renderPositions() {
         Potential: ${(p.wager * p.odds).toFixed(2)} SOL<br>
         ${isExpired ? `Final PnL: <span class="${won ? 'text-green-400' : 'text-red-400'}">${pnl} SOL</span>` : `Time Left: ${formatTimeRemaining(expiryTime)}`}
       </div>
-      <div class="text-xs text-gray-500">Created: ${createdAt.toLocaleString()}</div>
+      <div class="text-xs text-gray-500">Created: ${new Date(p.createdAt).toLocaleString()}</div>
     `;
-
     (isExpired ? closedDiv : openDiv).appendChild(card);
   });
 }
 
-fetchLivePrices();
+function formatTimeRemaining(expiryTime) {
+  const now = new Date();
+  const remaining = expiryTime - now;
+  if (remaining <= 0) return 'Expired';
+  const hrs = Math.floor(remaining / 3600000);
+  const mins = Math.floor((remaining % 3600000) / 60000);
+  return `${hrs}h ${mins}m`;
+}
+
+fetchParlaysFromDatabase();
 setInterval(fetchLivePrices, 5000);
 </script>
+
 
 </body>
 </html>
