@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>parlay.fun - Create Parlay</title>
+  <title>parlay.fun - Create Parlay (Live Prices)</title>
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
   <style>
     .toast {
@@ -47,7 +47,7 @@
   <div class="w-full max-w-xl space-y-6">
     <h2 class="text-3xl font-bold text-center mb-8">Create New Parlay</h2>
 
-        <div class="space-y-4">
+    <div class="space-y-4">
       <div>
         <label for="market" class="block mb-1 text-sm">Select Market:</label>
         <select id="market" class="w-full p-2 bg-gray-700 rounded" onchange="updateMarketInfo()">
@@ -60,7 +60,7 @@
 
       <div>
         <label for="expiry" class="block mb-1 text-sm">Select Expiry:</label>
-        <select id="expiry" class="w-full p-2 bg-gray-700 rounded" onchange="updateMarginAndFee()">
+        <select id="expiry" class="w-full p-2 bg-gray-700 rounded">
           <option value="1">1 Hour</option>
           <option value="4">4 Hours</option>
           <option value="24">1 Day</option>
@@ -70,11 +70,17 @@
       </div>
 
       <div>
+        <label for="direction" class="block mb-1 text-sm">Direction:</label>
+        <select id="direction" class="w-full p-2 bg-gray-700 rounded">
+          <option value="above">Above</option>
+          <option value="below">Below</option>
+        </select>
+      </div>
+
+      <div>
         <label for="target" class="block mb-1 text-sm">Target Price:</label>
         <input id="target" type="number" class="w-full p-2 bg-gray-700 rounded" placeholder="Enter target price">
       </div>
-
-      <div id="margin-info" class="text-sm text-gray-400"></div>
     </div>
 
     <div class="flex justify-center space-x-4 mt-6">
@@ -84,7 +90,7 @@
 
     <div id="bet-list" class="mt-8 space-y-4"></div>
 
-        <div class="space-y-4 mt-8">
+    <div class="space-y-4 mt-8">
       <div>
         <label for="wager" class="block mb-1 text-sm">Wager Amount (SOL):</label>
         <input id="wager" type="number" class="w-full p-2 bg-gray-700 rounded" placeholder="Enter wager amount" oninput="updatePNL()">
@@ -104,181 +110,103 @@
   </div>
 </div>
 
-  <script>
+<script>
 let currentBets = [];
 let livePrices = {};
-let marginOfError = 0.015;
-let platformFeeRate = 0.001;
-let animationDuration = 500; // ms
 
 async function fetchLivePrices() {
   try {
-    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true');
+    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
     const data = await res.json();
-    livePrices['BTC/USD'] = { price: data.bitcoin.usd, change: data.bitcoin.usd_24h_change.toFixed(2) };
-    livePrices['ETH/USD'] = { price: data.ethereum.usd, change: data.ethereum.usd_24h_change.toFixed(2) };
-    livePrices['SOL/USD'] = { price: data.solana.usd, change: data.solana.usd_24h_change.toFixed(2) };
+    livePrices['BTC/USD'] = data.bitcoin.usd;
+    livePrices['ETH/USD'] = data.ethereum.usd;
+    livePrices['SOL/USD'] = data.solana.usd;
     updateMarketInfo();
-    refreshBetList();
   } catch (error) {
-    console.error('Error fetching prices:', error);
+    console.error('Price fetch failed:', error);
   }
 }
 
 function updateMarketInfo() {
   const market = document.getElementById('market').value;
-  const priceInfo = livePrices[market];
-  const infoElement = document.getElementById('market-info');
-  if (priceInfo) {
-    infoElement.innerHTML = `<span class="text-sm text-gray-400">Live: $${priceInfo.price} (${priceInfo.change}%)</span>`;
+  const price = livePrices[market];
+  if (price) {
+    document.getElementById('market-info').innerText = `Live Price: $${price}`;
   } else {
-    infoElement.innerText = '';
+    document.getElementById('market-info').innerText = '';
   }
-}
-
-function updateMarginAndFee() {
-  const expiryHours = parseInt(document.getElementById('expiry').value);
-  marginOfError = 0.015 + (expiryHours / 24) * 0.002;
-  platformFeeRate = 0.001 + (expiryHours / 168) * 0.005;
-  document.getElementById('margin-info').innerText = `Estimated Margin of Error: ±${(marginOfError * 100).toFixed(2)}%`;
-  updatePNL();
 }
 
 function addBet() {
   const market = document.getElementById('market').value;
+  const expiry = parseInt(document.getElementById('expiry').value);
+  const direction = document.getElementById('direction').value;
   const target = parseFloat(document.getElementById('target').value);
-  if (!market || !target) {
-    showToast('Fill in both Market and Target!', false);
+  const livePrice = livePrices[market];
+
+  if (!market || !target || !livePrice) {
+    alert('Please fill all fields.');
     return;
   }
-  const live = livePrices[market]?.price || 0;
-  const distance = Math.abs(target - live) / live;
-  const odds = 1 / (distance + marginOfError);
 
-  currentBets.push({ market, target, odds });
+  const margin = 0.015;
+  const distance = Math.abs(target - livePrice) / livePrice;
+  const volatility = 0.05; // Simplified volatility
+  const timePenalty = 1 + (24 / expiry);
+  const volatilityBoost = 1 + (volatility * 10);
+  const rawOdds = (1 / (distance + margin)) * (volatilityBoost / timePenalty);
+  const finalOdds = Math.max(1.1, Math.min(rawOdds, 25));
+
+  currentBets.push({ market, direction, target, odds: finalOdds.toFixed(2) });
   refreshBetList();
-  document.getElementById('target').value = '';
-  updatePNL();
-  showToast('Bet Added ✅', true);
 }
 
 function refreshBetList() {
   const betList = document.getElementById('bet-list');
   betList.innerHTML = '';
-  if (currentBets.length === 0) {
-    betList.innerHTML = '<div class="text-gray-400 text-center py-4">No bets added yet.</div>';
-    return;
-  }
-  currentBets.forEach((bet, idx) => {
-    const item = document.createElement('div');
-    item.className = 'bg-gray-800 p-3 rounded-lg mb-2 flex justify-between items-center shadow-md card-hover';
-    item.innerHTML = `
+
+  currentBets.forEach((bet, index) => {
+    const div = document.createElement('div');
+    div.className = 'bg-gray-800 p-3 rounded-lg mb-2 flex justify-between items-center shadow-md card-hover';
+    div.innerHTML = `
       <div>
         <div class="font-semibold">${bet.market}</div>
-        <div class="text-sm text-gray-400">Target: $${bet.target}</div>
-        <div class="text-xs text-gray-500">Bet Odds: ${bet.odds.toFixed(2)}x</div>
+        <div class="text-sm text-gray-400">${bet.direction} $${bet.target}</div>
+        <div class="text-xs text-gray-500">Odds: ${bet.odds}x</div>
       </div>
-      <button onclick="removeBet(${idx})" class="text-red-400 hover:text-red-300">Remove</button>
+      <button onclick="removeBet(${index})" class="text-red-400 hover:text-red-300">Remove</button>
     `;
-    betList.appendChild(item);
+    betList.appendChild(div);
   });
+
+  updatePNL();
 }
 
 function removeBet(index) {
   currentBets.splice(index, 1);
   refreshBetList();
-  updatePNL();
-}
-
-function clearBets() {
-  currentBets = [];
-  refreshBetList();
-  updatePNL();
-}
-
-function animateValue(id, start, end, duration) {
-  const element = document.getElementById(id);
-  let startTimestamp = null;
-  const step = (timestamp) => {
-    if (!startTimestamp) startTimestamp = timestamp;
-    const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-    element.innerText = (start + (end - start) * progress).toFixed(3);
-    if (progress < 1) {
-      window.requestAnimationFrame(step);
-    }
-  };
-  window.requestAnimationFrame(step);
 }
 
 function updatePNL() {
   const wager = parseFloat(document.getElementById('wager').value) || 0;
-  const combinedOdds = currentBets.reduce((acc, bet) => acc * bet.odds, 1);
+  const totalOdds = currentBets.reduce((acc, bet) => acc * parseFloat(bet.odds), 1);
+  const platformFee = wager * 0.01;
+  const potentialWinnings = (wager * totalOdds) - platformFee;
 
-  const platformFee = wager * platformFeeRate;
-  const potentialWinnings = (wager * combinedOdds) - platformFee;
-
-  animateValue('fee-info', parseFloat(document.getElementById('fee-info').innerText.split(' ')[2]) || 0, platformFee, animationDuration);
-  animateValue('odds-info', parseFloat(document.getElementById('odds-info').innerText.split(' ')[2]) || 1, combinedOdds, animationDuration);
-  animateValue('pnl', parseFloat(document.getElementById('pnl').innerText.split(' ')[2]) || 0, potentialWinnings, animationDuration);
-
-  document.getElementById('fee-info').innerText = `Platform Fee: ${platformFee.toFixed(3)} SOL`;
-  document.getElementById('odds-info').innerText = `Total Odds: ${combinedOdds.toFixed(2)}x`;
-  document.getElementById('pnl').innerText = `Potential Winnings: ${potentialWinnings.toFixed(3)} SOL`;
+  document.getElementById('fee-info').innerText = `Platform Fee: ${platformFee.toFixed(2)} SOL`;
+  document.getElementById('odds-info').innerText = `Total Odds: ${totalOdds.toFixed(2)}x`;
+  document.getElementById('pnl').innerText = `Potential Winnings: ${potentialWinnings.toFixed(2)} SOL`;
 }
-
-async function connectWallet() {
-  if (window.solana && window.solana.isPhantom) {
-    try {
-      const response = await window.solana.connect();
-      const publicKey = response.publicKey.toString();
-      document.getElementById('connect-wallet').innerText = publicKey.slice(0, 4) + '...' + publicKey.slice(-4);
-      showToast('Wallet Connected ✅', true);
-    } catch (err) {
-      console.error('Connection failed', err);
-      showToast('Wallet connection failed ❌', false);
-    }
-  } else {
-    alert('Phantom Wallet not found!');
-  }
-}
-
-document.getElementById('connect-wallet').addEventListener('click', connectWallet);
 
 function createParlay() {
   if (currentBets.length === 0) {
-    showToast('Add at least one bet!', false);
+    alert('Add bets first.');
     return;
   }
-  const wager = parseFloat(document.getElementById('wager').value);
-  if (!wager || wager <= 0) {
-    showToast('Enter valid wager!', false);
-    return;
-  }
-  if (wager > 50) {
-    showToast('Max wager is 50 SOL', false);
-    return;
-  }
-
-  const parlay = {
-    bets: currentBets,
-    wager,
-    expiry: parseInt(document.getElementById('expiry').value),
-    createdAt: new Date().toISOString()
-  };
-  console.log('Parlay Created:', parlay);
-  showToast('Parlay Created Successfully! ✅', true);
-  clearBets();
+  alert('Parlay created successfully!');
+  currentBets = [];
+  refreshBetList();
   document.getElementById('wager').value = '';
-  updatePNL();
-}
-
-function showToast(message, success) {
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.style.background = success ? '#4ade80' : '#f87171';
-  toast.innerText = message;
-  document.body.appendChild(toast);
-  setTimeout(() => { toast.remove(); }, 3000);
 }
 
 function goHome() {
@@ -287,7 +215,6 @@ function goHome() {
 
 fetchLivePrices();
 setInterval(fetchLivePrices, 5000);
-updateMarginAndFee(); // initialize margin on page load
 </script>
 
 </body>
