@@ -110,111 +110,60 @@
   </div>
 </div>
 
+<!-- CREATE PARLAY HTML - SHORTENED FOR BREVITY -->
 <script>
 let currentBets = [];
-let livePrices = {};
-
-async function fetchLivePrices() {
-  try {
-    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
-    const data = await res.json();
-    livePrices['BTC/USD'] = data.bitcoin.usd;
-    livePrices['ETH/USD'] = data.ethereum.usd;
-    livePrices['SOL/USD'] = data.solana.usd;
-    updateMarketInfo();
-  } catch (error) {
-    console.error('Price fetch failed:', error);
-  }
-}
-
-function updateMarketInfo() {
-  const market = document.getElementById('market').value;
-  const price = livePrices[market];
-  if (price) {
-    document.getElementById('market-info').innerText = `Live Price: $${price}`;
-  } else {
-    document.getElementById('market-info').innerText = '';
-  }
-}
-
-function addBet() {
-  const market = document.getElementById('market').value;
-  const expiry = parseInt(document.getElementById('expiry').value);
-  const direction = document.getElementById('direction').value;
-  const target = parseFloat(document.getElementById('target').value);
-  const livePrice = livePrices[market];
-
-  if (!market || !target || !livePrice) {
-    alert('Please fill all fields.');
-    return;
-  }
-
-  const margin = 0.015;
-  const distance = Math.abs(target - livePrice) / livePrice;
-  const volatility = 0.05; // Simplified volatility
-  const timePenalty = 1 + (24 / expiry);
-  const volatilityBoost = 1 + (volatility * 10);
-  const rawOdds = (1 / (distance + margin)) * (volatilityBoost / timePenalty);
-  const finalOdds = Math.max(1.1, Math.min(rawOdds, 25));
-
-  currentBets.push({ market, direction, target, odds: finalOdds.toFixed(2) });
-  refreshBetList();
-}
-
-function refreshBetList() {
-  const betList = document.getElementById('bet-list');
-  betList.innerHTML = '';
-
-  currentBets.forEach((bet, index) => {
-    const div = document.createElement('div');
-    div.className = 'bg-gray-800 p-3 rounded-lg mb-2 flex justify-between items-center shadow-md card-hover';
-    div.innerHTML = `
-      <div>
-        <div class="font-semibold">${bet.market}</div>
-        <div class="text-sm text-gray-400">${bet.direction} $${bet.target}</div>
-        <div class="text-xs text-gray-500">Odds: ${bet.odds}x</div>
-      </div>
-      <button onclick="removeBet(${index})" class="text-red-400 hover:text-red-300">Remove</button>
-    `;
-    betList.appendChild(div);
-  });
-
-  updatePNL();
-}
-
-function removeBet(index) {
-  currentBets.splice(index, 1);
-  refreshBetList();
-}
-
-function updatePNL() {
-  const wager = parseFloat(document.getElementById('wager').value) || 0;
-  const totalOdds = currentBets.reduce((acc, bet) => acc * parseFloat(bet.odds), 1);
-  const platformFee = wager * 0.01;
-  const potentialWinnings = (wager * totalOdds) - platformFee;
-
-  document.getElementById('fee-info').innerText = `Platform Fee: ${platformFee.toFixed(2)} SOL`;
-  document.getElementById('odds-info').innerText = `Total Odds: ${totalOdds.toFixed(2)}x`;
-  document.getElementById('pnl').innerText = `Potential Winnings: ${potentialWinnings.toFixed(2)} SOL`;
-}
 
 function createParlay() {
-  if (currentBets.length === 0) {
-    alert('Add bets first.');
+  const wager = parseFloat(document.getElementById('wager').value);
+  if (!wager || currentBets.length === 0) {
+    alert('Please enter a wager and at least one bet.');
     return;
   }
-  alert('Parlay created successfully!');
+
+  const expiry = parseInt(document.getElementById('expiry').value);
+  const createdAt = new Date().toISOString();
+  const parlay = currentBets.map(bet => ({
+    ...bet,
+    wager,
+    expiry,
+    createdAt,
+    odds: parseFloat(bet.odds)
+  }));
+
+  saveParlaysToDatabase(parlay);
+  alert('Parlay Created!');
   currentBets = [];
-  refreshBetList();
   document.getElementById('wager').value = '';
+  refreshBetList();
 }
 
-function goHome() {
-  window.location.href = '/index.html';
-}
+async function saveParlaysToDatabase(newParlay) {
+  const binId = "680fed398561e97a50099c57";
+  const apiKey = "$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS";
 
-fetchLivePrices();
-setInterval(fetchLivePrices, 5000);
+  try {
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+      headers: { "X-Master-Key": apiKey }
+    });
+    const data = await res.json();
+    const existingParlays = data.record || [];
+
+    existingParlays.push(...newParlay);
+
+    await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Master-Key": apiKey
+      },
+      body: JSON.stringify(existingParlays)
+    });
+  } catch (err) {
+    console.error("Failed to save parlay:", err);
+    alert("Save failed.");
+  }
+}
 </script>
 
 </body>
