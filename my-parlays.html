@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
   <title>My Parlays - parlay.fun</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
 </head>
 <body class="bg-gray-900 text-white">
 
@@ -30,71 +30,89 @@
 </div>
 
 <script>
-let livePrices = {};
-let parlays = [];
+const BIN_ID = "680fed398561e97a50099c57";
+const API_KEY = "$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS";
 
-async function fetchParlaysFromDatabase() {
+let parlays = [];
+let livePrices = {};
+
+function toggleTab(tab) {
+  document.getElementById('tab-open').classList.toggle('bg-blue-600', tab === 'open');
+  document.getElementById('tab-open').classList.toggle('bg-gray-700', tab !== 'open');
+  document.getElementById('tab-closed').classList.toggle('bg-blue-600', tab === 'closed');
+  document.getElementById('tab-closed').classList.toggle('bg-gray-700', tab !== 'closed');
+  document.getElementById('open-positions').classList.toggle('hidden', tab !== 'open');
+  document.getElementById('closed-positions').classList.toggle('hidden', tab !== 'closed');
+}
+
+async function fetchParlays() {
   try {
-    const res = await fetch("https://api.jsonbin.io/v3/b/680fed398561e97a50099c57/latest", {
-      headers: {
-        "X-Master-Key": "$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS"
-      }
+    const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+      headers: { "X-Master-Key": API_KEY }
     });
     const data = await res.json();
     parlays = data.record || [];
-    fetchLivePrices();
-  } catch (err) {
-    console.error("Fetch failed", err);
+    await fetchPrices();
+  } catch (e) {
+    console.error("Failed to fetch parlays:", e);
   }
 }
 
-async function fetchLivePrices() {
+async function fetchPrices() {
   try {
-    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd');
+    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd");
     const data = await res.json();
-    livePrices['BTC/USD'] = data.bitcoin.usd;
-    livePrices['ETH/USD'] = data.ethereum.usd;
-    livePrices['SOL/USD'] = data.solana.usd;
-    renderPositions();
+    livePrices = {
+      "BTC/USD": data.bitcoin.usd,
+      "ETH/USD": data.ethereum.usd,
+      "SOL/USD": data.solana.usd
+    };
+    renderParlays();
   } catch (err) {
-    console.error('Price fetch failed:', err);
+    console.error("Price fetch failed:", err);
   }
 }
 
-function renderPositions() {
-  const openDiv = document.getElementById('open-positions');
-  const closedDiv = document.getElementById('closed-positions');
+function renderParlays() {
+  const openDiv = document.getElementById("open-positions");
+  const closedDiv = document.getElementById("closed-positions");
   openDiv.innerHTML = '';
   closedDiv.innerHTML = '';
 
   const now = new Date();
 
   parlays.forEach(p => {
-    const expiryTime = new Date(p.createdAt);
-    expiryTime.setHours(expiryTime.getHours() + p.expiry);
+    const createdAt = new Date(p.createdAt);
+    const expiryMs = p.expiry * 60 * 60 * 1000;
+    const expiryTime = new Date(createdAt.getTime() + expiryMs);
     const isExpired = now > expiryTime;
 
-    const livePrice = livePrices[p.market];
-    const hitTarget = p.direction === 'above' ? livePrice >= p.target : livePrice <= p.target;
-    const won = isExpired && hitTarget;
-    const status = isExpired ? (won ? 'Won ✅' : 'Lost ❌') : 'Open 🟡';
+    const price = livePrices[p.market] || 0;
+    const hit = p.direction === 'above' ? price >= p.target : price <= p.target;
+    const status = isExpired ? (hit ? "Won ✅" : "Lost ❌") : "Open 🟡";
 
-    const pnl = isExpired ? (won ? (p.wager * p.odds - p.wager).toFixed(2) : (-p.wager).toFixed(2)) : '-';
+    const pnl = isExpired
+      ? (hit ? (p.wager * p.odds - p.wager).toFixed(2) : (-p.wager).toFixed(2))
+      : "-";
 
-    const card = document.createElement('div');
-    card.className = 'bg-gray-800 p-4 rounded shadow-md space-y-2';
+    const timeLeft = !isExpired
+      ? formatTimeRemaining(expiryTime)
+      : expiryTime.toLocaleString();
+
+    const card = document.createElement("div");
+    card.className = "bg-gray-800 p-4 rounded shadow-md";
     card.innerHTML = `
       <div class="flex justify-between">
         <div class="font-bold">${p.market} (${p.direction.toUpperCase()} $${p.target})</div>
         <div class="text-sm text-gray-400">${status}</div>
       </div>
-      <div class="text-sm">
+      <div class="text-sm mt-1">
         Wager: <span class="text-blue-300">${p.wager} SOL</span><br>
         Odds: ${p.odds}x<br>
         Potential: ${(p.wager * p.odds).toFixed(2)} SOL<br>
-        ${isExpired ? `Final PnL: <span class="${won ? 'text-green-400' : 'text-red-400'}">${pnl} SOL</span>` : `Time Left: ${formatTimeRemaining(expiryTime)}`}
+        ${isExpired ? `Final PnL: <span class="${hit ? 'text-green-400' : 'text-red-400'}">${pnl} SOL</span>` : `Time Left: ${timeLeft}`}
       </div>
-      <div class="text-xs text-gray-500">Created: ${new Date(p.createdAt).toLocaleString()}</div>
+      <div class="text-xs text-gray-500 mt-1">Created: ${createdAt.toLocaleString()}</div>
     `;
     (isExpired ? closedDiv : openDiv).appendChild(card);
   });
@@ -102,17 +120,16 @@ function renderPositions() {
 
 function formatTimeRemaining(expiryTime) {
   const now = new Date();
-  const remaining = expiryTime - now;
-  if (remaining <= 0) return 'Expired';
-  const hrs = Math.floor(remaining / 3600000);
-  const mins = Math.floor((remaining % 3600000) / 60000);
+  const diff = expiryTime - now;
+  if (diff <= 0) return "Expired";
+  const hrs = Math.floor(diff / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
   return `${hrs}h ${mins}m`;
 }
 
-fetchParlaysFromDatabase();
-setInterval(fetchLivePrices, 5000);
+fetchParlays();
+setInterval(fetchPrices, 5000);
 </script>
-
 
 </body>
 </html>
