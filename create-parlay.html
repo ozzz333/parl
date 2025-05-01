@@ -57,9 +57,15 @@
     </div>
   </div>
 
-  <div>
-    <label for="target">Target Price:</label>
-    <input id="target" type="number" class="w-full p-2 bg-gray-700 rounded mt-1" placeholder="Enter target price">
+  <div class="grid grid-cols-2 gap-4">
+    <div>
+      <label for="min-price">Min Price:</label>
+      <input id="min-price" type="number" class="w-full p-2 bg-gray-700 rounded mt-1" placeholder="Min">
+    </div>
+    <div>
+      <label for="max-price">Max Price:</label>
+      <input id="max-price" type="number" class="w-full p-2 bg-gray-700 rounded mt-1" placeholder="Max">
+    </div>
   </div>
 
   <div class="flex space-x-4">
@@ -94,14 +100,18 @@ window.onload = function () {
   const API_KEY = "$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS";
 
   async function fetchPrices() {
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd");
-    const data = await res.json();
-    livePrices = {
-      "BTC/USD": data.bitcoin.usd,
-      "ETH/USD": data.ethereum.usd,
-      "SOL/USD": data.solana.usd
-    };
-    updateMarketInfo();
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd");
+      const data = await res.json();
+      livePrices = {
+        "BTC/USD": data.bitcoin.usd,
+        "ETH/USD": data.ethereum.usd,
+        "SOL/USD": data.solana.usd
+      };
+      updateMarketInfo();
+    } catch (e) {
+      console.error("Price fetch failed", e);
+    }
   }
 
   function updateMarketInfo() {
@@ -110,23 +120,45 @@ window.onload = function () {
     document.getElementById("market-info").innerText = `Live Price: $${price}`;
   }
 
+  function getMarketCapFactor(market) {
+    switch (market) {
+      case "BTC/USD": return 1.0;
+      case "ETH/USD": return 1.5;
+      case "SOL/USD": return 2.5;
+      default: return 2.0;
+    }
+  }
+
+  function getVolatility(market) {
+    switch (market) {
+      case "BTC/USD": return 0.03;
+      case "ETH/USD": return 0.05;
+      case "SOL/USD": return 0.10;
+      default: return 0.07;
+    }
+  }
+
   function addBet() {
     const market = document.getElementById("market").value;
     const expiry = parseInt(document.getElementById("expiry").value);
-    const direction = document.getElementById("direction").value;
-    const target = parseFloat(document.getElementById("target").value);
+    const minPrice = parseFloat(document.getElementById("min-price").value);
+    const maxPrice = parseFloat(document.getElementById("max-price").value);
     const price = livePrices[market];
-    if (!price || !target) return alert("Fill all fields.");
 
-    const margin = 0.015;
-    const distance = Math.abs(price - target) / price;
-    const timePenalty = 1 + (24 / expiry);
-    const volatility = 0.05;
-    const volatilityBoost = 1 + (volatility * 10);
-    const rawOdds = (1 / (distance + margin)) * (volatilityBoost / timePenalty);
-    const odds = Math.max(1.1, Math.min(rawOdds, 25));
+    if (!price || !minPrice || !maxPrice || minPrice >= maxPrice) {
+      return alert("Please enter valid min and max prices.");
+    }
 
-    currentBets.push({ market, direction, target, odds: odds.toFixed(2), expiry });
+    const range = maxPrice - minPrice;
+    const relativeRange = range / price;
+    const volatility = getVolatility(market);
+    const marketCapFactor = getMarketCapFactor(market);
+    const timePenalty = 1 + expiry / 24;
+
+    const rawOdds = (1 / (relativeRange * marketCapFactor)) * (volatility / timePenalty);
+    const odds = Math.max(1.1, Math.min(rawOdds, 20));
+
+    currentBets.push({ market, minPrice, maxPrice, odds: odds.toFixed(2), expiry });
     refreshBetList();
   }
 
@@ -136,7 +168,7 @@ window.onload = function () {
     currentBets.forEach((b, i) => {
       const div = document.createElement("div");
       div.className = "bg-gray-800 p-3 rounded card-hover flex justify-between";
-      div.innerHTML = `<div><b>${b.market}</b><br>${b.direction} $${b.target}<br>Odds: ${b.odds}x</div>
+      div.innerHTML = `<div><b>${b.market}</b><br>Range: $${b.minPrice} - $${b.maxPrice}<br>Odds: ${b.odds}x</div>
       <button onclick="removeBet(${i})" class="text-red-400 hover:text-red-200">Remove</button>`;
       container.appendChild(div);
     });
