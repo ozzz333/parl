@@ -2,9 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>My Parlays - parlay.fun</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>parlay.fun - Create Parlay</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <style>
+    .card-hover:hover {
+      transform: translateY(-2px);
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 10px rgba(255,255,255,0.1);
+    }
+  </style>
 </head>
 <body class="bg-gray-900 text-white">
 
@@ -12,123 +19,212 @@
   <div class="text-xl font-bold cursor-pointer" onclick="window.location.href='index.html'">parlay.fun</div>
   <div class="space-x-6">
     <a href="/markets.html">Markets</a>
-    <a href="/my-parlays.html" class="underline">My Parlays</a>
-    <a href="/create-parlay.html">Create Parlay</a>
+    <a href="/my-parlays.html">My Parlays</a>
+    <a href="/create-parlay.html" class="underline">Create Parlay</a>
   </div>
 </nav>
 
-<div class="max-w-4xl mx-auto p-6">
-  <h1 class="text-3xl font-bold mb-4 text-center">My Parlays</h1>
+<div class="max-w-xl mx-auto p-6 space-y-6">
+  <h1 class="text-2xl font-bold text-center">Create New Parlay</h1>
 
-  <div class="flex justify-center mb-6">
-    <button onclick="toggleTab('open')" id="tab-open" class="px-4 py-2 bg-blue-600 rounded-l">Open</button>
-    <button onclick="toggleTab('closed')" id="tab-closed" class="px-4 py-2 bg-gray-700 rounded-r">History</button>
+  <div>
+    <label for="market">Market:</label>
+    <select id="market" class="w-full p-2 bg-gray-700 rounded mt-1">
+      <option value="BTC/USD">BTC/USD</option>
+      <option value="ETH/USD">ETH/USD</option>
+      <option value="SOL/USD">SOL/USD</option>
+    </select>
+    <div id="market-info" class="text-sm text-gray-400 mt-1"></div>
   </div>
 
-  <div id="open-positions" class="space-y-4"></div>
-  <div id="closed-positions" class="space-y-4 hidden"></div>
+  <div class="grid grid-cols-2 gap-4">
+    <div>
+      <label for="expiry">Expiry:</label>
+      <select id="expiry" class="w-full p-2 bg-gray-700 rounded mt-1">
+        <option value="1">1 Hour</option>
+        <option value="4">4 Hours</option>
+        <option value="24">1 Day</option>
+        <option value="168">7 Days</option>
+        <option value="720">30 Days</option>
+      </select>
+    </div>
+    <div>
+      <label for="direction">Direction:</label>
+      <select id="direction" class="w-full p-2 bg-gray-700 rounded mt-1">
+        <option value="above">Above</option>
+        <option value="below">Below</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4">
+    <div>
+      <label for="min-price">Min Price:</label>
+      <input id="min-price" type="number" class="w-full p-2 bg-gray-700 rounded mt-1" placeholder="Min">
+    </div>
+    <div>
+      <label for="max-price">Max Price:</label>
+      <input id="max-price" type="number" class="w-full p-2 bg-gray-700 rounded mt-1" placeholder="Max">
+    </div>
+  </div>
+
+  <div class="flex space-x-4">
+    <button id="add-btn" class="bg-green-600 px-4 py-2 rounded hover:bg-green-500">Add Bet</button>
+    <button id="clear-btn" class="bg-red-600 px-4 py-2 rounded hover:bg-red-500">Clear</button>
+  </div>
+
+  <div id="bet-list" class="space-y-4"></div>
+
+  <div>
+    <label for="wager">Wager (SOL):</label>
+    <input id="wager" type="number" class="w-full p-2 bg-gray-700 rounded mt-1" placeholder="Enter wager">
+  </div>
+
+  <div class="text-sm text-gray-400">
+    <div id="fee-info">Fee: 0 SOL</div>
+    <div id="odds-info">Odds: 1.00x</div>
+    <div id="pnl">Potential: 0 SOL</div>
+  </div>
+
+  <div class="text-center">
+    <button id="create-btn" class="bg-blue-600 px-6 py-2 mt-4 rounded hover:bg-blue-500">Create Parlay</button>
+  </div>
 </div>
 
 <script>
-const BIN_ID = "680fed398561e97a50099c57";
-const API_KEY = "$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS";
+window.onload = function () {
+  let currentBets = [];
+  let livePrices = {};
 
-let parlays = [];
-let livePrices = {};
+  const BIN_ID = "680fed398561e97a50099c57";
+  const API_KEY = "$2a$10$gcLa/HvFBv05limuLdIGA.gF6iELe2JnfNILKRchk7XkKnkDU5eAS";
 
-function toggleTab(tab) {
-  document.getElementById('tab-open').classList.toggle('bg-blue-600', tab === 'open');
-  document.getElementById('tab-open').classList.toggle('bg-gray-700', tab !== 'open');
-  document.getElementById('tab-closed').classList.toggle('bg-blue-600', tab === 'closed');
-  document.getElementById('tab-closed').classList.toggle('bg-gray-700', tab !== 'closed');
-  document.getElementById('open-positions').classList.toggle('hidden', tab !== 'open');
-  document.getElementById('closed-positions').classList.toggle('hidden', tab !== 'closed');
-}
+  async function fetchPrices() {
+    try {
+      const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd");
+      const data = await res.json();
+      livePrices = {
+        "BTC/USD": data.bitcoin.usd,
+        "ETH/USD": data.ethereum.usd,
+        "SOL/USD": data.solana.usd
+      };
+      updateMarketInfo();
+    } catch (e) {
+      console.error("Price fetch failed", e);
+    }
+  }
 
-async function fetchParlays() {
-  try {
-    const res = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
-      headers: { "X-Master-Key": API_KEY }
+  function updateMarketInfo() {
+    const market = document.getElementById("market").value;
+    const price = livePrices[market];
+    document.getElementById("market-info").innerText = `Live Price: $${price}`;
+  }
+
+  function getMarketCapFactor(market) {
+    switch (market) {
+      case "BTC/USD": return 1.0;
+      case "ETH/USD": return 1.5;
+      case "SOL/USD": return 2.5;
+      default: return 2.0;
+    }
+  }
+
+  function getVolatility(market) {
+    switch (market) {
+      case "BTC/USD": return 0.03;
+      case "ETH/USD": return 0.05;
+      case "SOL/USD": return 0.10;
+      default: return 0.07;
+    }
+  }
+
+  function addBet() {
+    const market = document.getElementById("market").value;
+    const expiry = parseInt(document.getElementById("expiry").value);
+    const minPrice = parseFloat(document.getElementById("min-price").value);
+    const maxPrice = parseFloat(document.getElementById("max-price").value);
+    const price = livePrices[market];
+
+    if (!price || !minPrice || !maxPrice || minPrice >= maxPrice) {
+      return alert("Please enter valid min and max prices.");
+    }
+
+    const range = maxPrice - minPrice;
+    const relativeRange = range / price;
+    const volatility = getVolatility(market);
+    const marketCapFactor = getMarketCapFactor(market);
+    const timePenalty = 1 + expiry / 24;
+
+    const rawOdds = (1 / (relativeRange * marketCapFactor)) * (volatility / timePenalty);
+    const odds = Math.max(1.1, Math.min(rawOdds, 20));
+
+    currentBets.push({ market, minPrice, maxPrice, odds: odds.toFixed(2), expiry });
+    refreshBetList();
+  }
+
+  function refreshBetList() {
+    const container = document.getElementById("bet-list");
+    container.innerHTML = "";
+    currentBets.forEach((b, i) => {
+      const div = document.createElement("div");
+      div.className = "bg-gray-800 p-3 rounded card-hover flex justify-between";
+      div.innerHTML = `<div><b>${b.market}</b><br>Range: $${b.minPrice} - $${b.maxPrice}<br>Odds: ${b.odds}x</div>
+      <button onclick="removeBet(${i})" class="text-red-400 hover:text-red-200">Remove</button>`;
+      container.appendChild(div);
     });
-    const data = await res.json();
-    parlays = data.record || [];
-    await fetchPrices();
-  } catch (e) {
-    console.error("Failed to fetch parlays:", e);
+    updatePNL();
   }
-}
 
-async function fetchPrices() {
-  try {
-    const res = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd");
-    const data = await res.json();
-    livePrices = {
-      "BTC/USD": data.bitcoin.usd,
-      "ETH/USD": data.ethereum.usd,
-      "SOL/USD": data.solana.usd
-    };
-    renderParlays();
-  } catch (err) {
-    console.error("Price fetch failed:", err);
+  window.removeBet = function (i) {
+    currentBets.splice(i, 1);
+    refreshBetList();
+  };
+
+  function updatePNL() {
+    const wager = parseFloat(document.getElementById("wager").value) || 0;
+    const totalOdds = currentBets.reduce((acc, b) => acc * parseFloat(b.odds), 1);
+    const fee = wager * 0.01;
+    const pnl = (wager * totalOdds - fee).toFixed(2);
+    document.getElementById("fee-info").innerText = `Fee: ${fee.toFixed(2)} SOL`;
+    document.getElementById("odds-info").innerText = `Odds: ${totalOdds.toFixed(2)}x`;
+    document.getElementById("pnl").innerText = `Potential: ${pnl} SOL`;
   }
+
+  async function createParlay() {
+    const wager = parseFloat(document.getElementById("wager").value);
+    if (!wager || currentBets.length === 0) return alert("Add a bet and wager.");
+    const createdAt = new Date().toISOString();
+    const newParlay = currentBets.map(b => ({ ...b, wager, createdAt }));
+
+    const latest = await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}/latest`, {
+      headers: { "X-Master-Key": API_KEY }
+    }).then(r => r.json());
+
+    const updated = [...(latest.record || []), ...newParlay];
+
+    await fetch(`https://api.jsonbin.io/v3/b/${BIN_ID}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Master-Key": API_KEY
+      },
+      body: JSON.stringify(updated)
+    });
+
+    alert("Parlay Created!");
+    currentBets = [];
+    document.getElementById("wager").value = "";
+    refreshBetList();
+  }
+
+  document.getElementById("add-btn").onclick = addBet;
+  document.getElementById("clear-btn").onclick = () => { currentBets = []; refreshBetList(); };
+  document.getElementById("create-btn").onclick = createParlay;
+  document.getElementById("market").onchange = updateMarketInfo;
+
+  fetchPrices();
+  setInterval(fetchPrices, 5000);
 }
-
-function renderParlays() {
-  const openDiv = document.getElementById("open-positions");
-  const closedDiv = document.getElementById("closed-positions");
-  openDiv.innerHTML = '';
-  closedDiv.innerHTML = '';
-
-  const now = new Date();
-
-  parlays.forEach(p => {
-    const createdAt = new Date(p.createdAt);
-    const expiryMs = p.expiry * 60 * 60 * 1000;
-    const expiryTime = new Date(createdAt.getTime() + expiryMs);
-    const isExpired = now > expiryTime;
-
-    const price = livePrices[p.market] || 0;
-    const hit = p.direction === 'above' ? price >= p.target : price <= p.target;
-    const status = isExpired ? (hit ? "Won ✅" : "Lost ❌") : "Open 🟡";
-
-    const pnl = isExpired
-      ? (hit ? (p.wager * p.odds - p.wager).toFixed(2) : (-p.wager).toFixed(2))
-      : "-";
-
-    const timeLeft = !isExpired
-      ? formatTimeRemaining(expiryTime)
-      : expiryTime.toLocaleString();
-
-    const card = document.createElement("div");
-    card.className = "bg-gray-800 p-4 rounded shadow-md";
-    card.innerHTML = `
-      <div class="flex justify-between">
-        <div class="font-bold">${p.market} (${p.direction.toUpperCase()} $${p.target})</div>
-        <div class="text-sm text-gray-400">${status}</div>
-      </div>
-      <div class="text-sm mt-1">
-        Wager: <span class="text-blue-300">${p.wager} SOL</span><br>
-        Odds: ${p.odds}x<br>
-        Potential: ${(p.wager * p.odds).toFixed(2)} SOL<br>
-        ${isExpired ? `Final PnL: <span class="${hit ? 'text-green-400' : 'text-red-400'}">${pnl} SOL</span>` : `Time Left: ${timeLeft}`}
-      </div>
-      <div class="text-xs text-gray-500 mt-1">Created: ${createdAt.toLocaleString()}</div>
-    `;
-    (isExpired ? closedDiv : openDiv).appendChild(card);
-  });
-}
-
-function formatTimeRemaining(expiryTime) {
-  const now = new Date();
-  const diff = expiryTime - now;
-  if (diff <= 0) return "Expired";
-  const hrs = Math.floor(diff / 3600000);
-  const mins = Math.floor((diff % 3600000) / 60000);
-  return `${hrs}h ${mins}m`;
-}
-
-fetchParlays();
-setInterval(fetchPrices, 5000);
 </script>
 
 </body>
